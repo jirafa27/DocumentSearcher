@@ -144,12 +144,13 @@ class DocumentService:
 
         logger.info(f"Документ {document_id} успешно удален")
 
-    async def search_documents(
+    async def search(
         self,
         query: str,
         user_id: Optional[uuid.UUID] = None,
         document_id: Optional[uuid.UUID] = None,
         context_size: int = 50,
+        search_exact: bool = False,
     ) -> List[SearchResult]:
         """
         Поиск документов с фрагментами текста
@@ -159,6 +160,7 @@ class DocumentService:
             user_id: Optional[uuid.UUID] - фильтр по пользователю
             document_id: Optional[uuid.UUID] - фильтр по документу
             context_size: int - размер контекста (символов)
+            search_exact: bool - поиск точного совпадения
 
         Returns:
             List[SearchResult]: Список результатов поиска с документами и фрагментами
@@ -168,9 +170,10 @@ class DocumentService:
         """
         logger.info(f"Поиск документов по запросу: '{query}', user_id: {user_id}")
         try:
-            return await self.repository.search(
-                query, user_id, document_id, context_size
+            results = await self.repository.search(
+                query, user_id, document_id, context_size, search_exact
             )
+            return results
         except RepositoryError as e:
             logger.error(f"Критическая ошибка БД при поиске документов: {e}")
             raise DocumentError(f"Ошибка поиска: {str(e)}")

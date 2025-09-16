@@ -13,14 +13,11 @@ from app.core.exceptions.document import (
 from app.core.logger import logger
 from app.core.models.file import FileContent
 from app.schemas.document import (
-    ContextInfo,
     DocumentDeleteResponse,
     DocumentGetResponse,
     DocumentSearchResponse,
     DocumentUploadResponse,
     ProcessingStatus,
-    SearchDocumentResult,
-    SearchFragment,
     SearchMeta,
 )
 from app.services.document_service import DocumentService
@@ -73,14 +70,11 @@ async def upload_document(
             message="Документ успешно загружен",
         )
     except DocumentAlreadyExistsError as e:
-        # Дубликат документа - ошибка клиента
         raise HTTPException(status_code=400, detail=str(e))
     except DocumentDatabaseError as e:
-        # Ошибка БД - ошибка сервера
         logger.error(f"Ошибка БД при загрузке документа: {e}")
         raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера")
     except DocumentError as e:
-        # Другие ошибки документов - ошибка сервера
         logger.error(f"Ошибка при загрузке документа: {e}")
         raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера")
     except Exception as e:
@@ -91,6 +85,7 @@ async def upload_document(
 @router.get("/search", response_model=DocumentSearchResponse)
 async def search_documents(
     query: str = Query(..., description="Строка поиска", min_length=1),
+    search_exact: bool = Query(False, description="Поиск точного совпадения"),
     user_id: Optional[uuid.UUID] = Query(
         None, description="ID пользователя (опционально)"
     ),
@@ -107,8 +102,10 @@ async def search_documents(
 
     Args:
     - query: Строка поиска (обязательный параметр)
+    - search_exact: Поиск точного совпадения (опционально)
     - user_id: Фильтр по пользователю (опционально)
     - document_id: Поиск в конкретном документе (опционально)
+    - context_size: Размер контекста (символов) (опционально)
 
     Returns:
     - DocumentSearchResponse: Ответ на запрос
@@ -121,39 +118,15 @@ async def search_documents(
     """
 
     try:
-        results = await document_service.search_documents(
-            query, user_id, document_id, context_size
+        results = await document_service.search(
+            query, user_id, document_id, context_size, search_exact
         )
         logger.info(f"Найдено {len(results)} документов")
 
-        # Преобразуем результаты в формат схемы
-        search_results = []
         total_fragments = 0
 
-        for search_result in results:
-            # Преобразуем доменные фрагменты в схемы API
-            api_fragments = []
-            for fragment in search_result.fragments:
-                api_fragments.append(
-                    SearchFragment(
-                        text=fragment.text,
-                        context=ContextInfo(
-                            text=fragment.context.text,
-                            offset=fragment.context.offset,
-                            length=fragment.context.length,
-                            highlight_start=fragment.context.highlight_start,
-                            highlight_length=fragment.context.highlight_length,
-                        ),
-                    )
-                )
-
-            total_fragments += len(api_fragments)
-
-            search_results.append(
-                SearchDocumentResult(
-                    document=search_result.document, fragments=api_fragments
-                )
-            )
+        for document in results:
+            total_fragments += len(document.fragments)
 
         return DocumentSearchResponse(
             status=ProcessingStatus.SUCCESS,
@@ -163,7 +136,7 @@ async def search_documents(
                 total_documents=len(results),
                 total_fragments=total_fragments,
             ),
-            results=search_results,
+            results=results,
         )
     except DocumentError as e:
         raise HTTPException(status_code=400, detail=str(e))

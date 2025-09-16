@@ -10,17 +10,11 @@ class SearchDocument:
 
     id: uuid.UUID
     user_id: uuid.UUID
-    file_name: str  # Только имя файла без пути
+    file_size: int
+    file_path: str
+    file_name: str
     file_type: str
     uploaded_at: Optional[datetime] = None
-
-
-@dataclass
-class HighlightInfo:
-    """Информация о выделении текста"""
-
-    start: int
-    length: int
 
 
 @dataclass
@@ -48,4 +42,3 @@ class SearchResult:
 
     document: SearchDocument
     fragments: List[SearchFragment]
-    rank: float = 0.0

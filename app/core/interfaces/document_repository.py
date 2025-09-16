@@ -46,6 +46,7 @@ class IDocumentRepository(ABC):
         user_id: Optional[uuid.UUID] = None,
         document_id: Optional[uuid.UUID] = None,
         context_size: int = 50,
+        search_exact: bool = False,
     ) -> List[SearchResult]:
         """
         Поиск документов с фрагментами текста
@@ -55,6 +56,7 @@ class IDocumentRepository(ABC):
             user_id: Optional[uuid.UUID] - фильтр по пользователю
             document_id: Optional[uuid.UUID] - фильтр по документу
             context_size: int - размер контекста (символов)
+            search_exact: bool - поиск точного совпадения
         Returns:
             List[SearchResult]: Список результатов поиска с документами и фрагментами
 
