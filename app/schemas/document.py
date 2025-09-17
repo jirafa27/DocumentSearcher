@@ -35,7 +35,8 @@ class SearchMeta(BaseModel):
     """Метаинформация о поиске"""
 
     query: str = Field(..., description="Поисковый запрос")
-    context_size: int = Field(..., description="Размер контекста")
+    context_size_before: Optional[int] = Field(..., description="Размер контекста до выделения")
+    context_size_after: Optional[int] = Field(..., description="Размер контекста после выделения")
     total_documents: int = Field(..., description="Общее количество найденных документов")
     total_fragments: int = Field(..., description="Общее количество найденных фрагментов")
 

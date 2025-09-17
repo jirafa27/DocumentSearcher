@@ -122,11 +122,8 @@ class DocumentService:
             if not document:
                 raise DocumentNotFoundError(str(document_id))
 
-            deleted = await self.repository.delete(document_id)
-            if not deleted:
-                raise DocumentError(f"Не удалось удалить документ: {str(document_id)}")
-            else:
-                logger.info(f"Документ {document_id} успешно удален")
+            await self.repository.delete(document_id)
+            logger.info(f"Документ {document_id} успешно удален")
         except RepositoryError as e:
             logger.error(
                 f"Критическая ошибка БД при удалении документа {document_id}: {e}"
@@ -149,7 +146,8 @@ class DocumentService:
         query: str,
         user_id: Optional[uuid.UUID] = None,
         document_id: Optional[uuid.UUID] = None,
-        context_size: int = 50,
+        context_size_before: int = 50,
+        context_size_after: int = 50,
         search_exact: bool = False,
     ) -> List[SearchResult]:
         """
@@ -159,7 +157,8 @@ class DocumentService:
             query: str - поисковый запрос
             user_id: Optional[uuid.UUID] - фильтр по пользователю
             document_id: Optional[uuid.UUID] - фильтр по документу
-            context_size: int - размер контекста (символов)
+            context_size_before: int - размер контекста (слов) до выделения
+            context_size_after: int - размер контекста (слов) после выделения
             search_exact: bool - поиск точного совпадения
 
         Returns:
@@ -171,7 +170,7 @@ class DocumentService:
         logger.info(f"Поиск документов по запросу: '{query}', user_id: {user_id}")
         try:
             results = await self.repository.search(
-                query, user_id, document_id, context_size, search_exact
+                query, user_id, document_id, context_size_before, context_size_after, search_exact
             )
             return results
         except RepositoryError as e:

@@ -83,7 +83,7 @@ async def upload_document(
 
 
 @router.get("/search", response_model=DocumentSearchResponse)
-async def search_documents(
+async def search_fragments(
     query: str = Query(..., description="Строка поиска", min_length=1),
     search_exact: bool = Query(False, description="Поиск точного совпадения"),
     user_id: Optional[uuid.UUID] = Query(
@@ -92,34 +92,38 @@ async def search_documents(
     document_id: Optional[uuid.UUID] = Query(
         None, description="ID документа (опционально)"
     ),
-    context_size: int = Query(
-        50, description="Размер контекста (символов)", ge=10, le=200
+    context_size_before: Optional[int] = Query(
+        50, description="Размер контекста (слов)", ge=0, le=1000
+    ),
+    context_size_after: Optional[int] = Query(
+        50, description="Размер контекста (слов)", ge=0, le=1000
     ),
     document_service: DocumentService = Depends(get_document_service),
 ):
     """
-    Поиск документов
+    Поиск фрагментов в документах
 
     Args:
     - query: Строка поиска (обязательный параметр)
     - search_exact: Поиск точного совпадения (опционально)
     - user_id: Фильтр по пользователю (опционально)
     - document_id: Поиск в конкретном документе (опционально)
-    - context_size: Размер контекста (символов) (опционально)
+    - context_size_before: Размер контекста (слов) до выделения (опционально)
+    - context_size_after: Размер контекста (слов) после выделения (опционально)
 
     Returns:
-    - DocumentSearchResponse: Ответ на запрос
+    - DocumentSearchResponse: Ответ на запрос с фрагментами
 
     Raises:
     - HTTPException: 400 - Ошибка при поиске документов
     - HTTPException: 500 - Внутренняя ошибка сервера
 
-    Возвращает список документов и их фрагментов, где найдено совпадение
+    Возвращает список документов и их фрагментов, где найдено совпадение с запросом
     """
 
     try:
         results = await document_service.search(
-            query, user_id, document_id, context_size, search_exact
+            query, user_id, document_id, context_size_before, context_size_after, search_exact
         )
         logger.info(f"Найдено {len(results)} документов")
 
@@ -132,7 +136,8 @@ async def search_documents(
             status=ProcessingStatus.SUCCESS,
             meta=SearchMeta(
                 query=query,
-                context_size=context_size,
+                context_size_before=context_size_before,
+                context_size_after=context_size_after,
                 total_documents=len(results),
                 total_fragments=total_fragments,
             ),

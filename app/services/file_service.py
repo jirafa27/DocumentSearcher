@@ -153,6 +153,9 @@ class FileService(IFileService):
             UnsupportedFileTypeError: Если тип файла не поддерживается
             TextExtractionError: Если не удалось извлечь текст из файла
         """
+
+        await self.validate_file(file_path, file_type)
+
         if file_type == "pdf":
             # Выполняем в отдельном потоке чтобы не блокировать event loop
             return await asyncio.get_event_loop().run_in_executor(
@@ -163,9 +166,7 @@ class FileService(IFileService):
             return await asyncio.get_event_loop().run_in_executor(
                 None, self._extract_text_from_docx, file_path
             )
-        else:
-            logger.error(f"Неподдерживаемый тип файла: {file_type}")
-            raise UnsupportedFileTypeError(self.allowed_types)
+
 
     async def delete_file(self, file_path: str) -> None:
         """
