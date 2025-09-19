@@ -4,28 +4,22 @@ from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
-from app.core.models.document import Document
+from app.core.models.document import DocumentBase
 from app.core.models.search import SearchResult
 
-
-class ProcessingStatus(str, Enum):
-    SUCCESS = "success"
-    ERROR = "error"
 
 
 class DocumentUploadResponse(BaseModel):
     """Схема ответа при загрузке документа"""
-
-    status: ProcessingStatus = Field(..., description="Статус обработки документа")
     message: Optional[str] = Field(None, description="Сообщение о статусе")
-    document: Document = Field(..., description="Информация о документе")
+    document: DocumentBase = Field(..., description="Информация о документе")
 
     class Config:
         use_enum_values = True
         from_attributes = True
 
 
-class DocumentGetResponse(Document):
+class DocumentGetResponse(DocumentBase):
     """Схема ответа при получении информации о документе"""
 
     class Config:
@@ -42,8 +36,6 @@ class SearchMeta(BaseModel):
 
 class DocumentSearchResponse(BaseModel):
     """Ответ на запрос поиска по документам"""
-
-    status: ProcessingStatus = Field(..., description="Статус обработки")
     meta: SearchMeta = Field(..., description="Метаинформация о поиске")
     results: List[SearchResult] = Field(..., description="Результаты поиска")
 
@@ -53,7 +45,5 @@ class DocumentSearchResponse(BaseModel):
 
 class DocumentDeleteResponse(BaseModel):
     """Ответ на запрос удаления документа"""
-
-    status: ProcessingStatus = Field(..., description="Статус обработки документа")
     message: Optional[str] = Field(None, description="Сообщение о статусе")
     document_id: uuid.UUID = Field(..., description="ID документа")

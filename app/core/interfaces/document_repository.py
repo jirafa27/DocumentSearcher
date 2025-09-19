@@ -2,13 +2,13 @@ import uuid
 from abc import ABC, abstractmethod
 from typing import List, Optional
 
-from app.core.models.document import Document
+from app.core.models.document import Document, DocumentBase
 from app.core.models.search import SearchResult
 
 
 class IDocumentRepository(ABC):
     @abstractmethod
-    async def get_by_id(self, document_id: uuid.UUID) -> Optional[Document]:
+    async def get_by_id(self, document_id: uuid.UUID) -> Optional[DocumentBase]:
         """
         Получение документа по ID
 
@@ -16,24 +16,21 @@ class IDocumentRepository(ABC):
             document_id: uuid.UUID - идентификатор документа
 
         Returns:
-            Optional[Document]: Доменная модель документа или None если не найден
-
+            Optional[DocumentBase]: Доменная модель документа или None если не найден
+        
         Raises:
             RepositoryError: При ошибке выполнения запроса к БД
         """
         raise NotImplementedError
 
     @abstractmethod
-    async def create(self, document: Document) -> Document:
+    async def create(self, document: Document) -> DocumentBase:
         """
-        Создание нового документа
-
+        Создание документа в базе данных
         Args:
             document: Document - доменная модель документа
-
         Returns:
-            Document: Созданная доменная модель документа
-
+            DocumentBase: Созданная доменная модель документа
         Raises:
             RepositoryError: При ошибке создания документа
         """
@@ -70,10 +67,10 @@ class IDocumentRepository(ABC):
     @abstractmethod
     async def get_by_hash(self, file_hash: str) -> Optional[Document]:
         """
-        Поиск документа по хешу файла
+        Получение документа из базы данных по хешу файла
 
         Args:
-            file_hash: str - SHA-256 хеш файла
+            file_hash: str - хеш файла
 
         Returns:
             Optional[Document]: Доменная модель документа или None если не найден
@@ -84,15 +81,12 @@ class IDocumentRepository(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    async def delete(self, document_id: uuid.UUID) -> bool:
+    async def delete(self, document_id: uuid.UUID) -> None:
         """
-        Удаление документа
+        Удаление документа из базы данных
 
         Args:
             document_id: uuid.UUID - идентификатор документа
-
-        Returns:
-            bool: True если документ удален, False если не найден
 
         Raises:
             RepositoryError: При ошибке удаления из БД

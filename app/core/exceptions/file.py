@@ -15,7 +15,6 @@ class FileTooLargeError(FileValidationError):
             f"Файл слишком большой. Максимальный размер: {max_size / 1024 / 1024:.1f}MB"
         )
 
-
 class UnsupportedFileTypeError(FileValidationError):
     """Неподдерживаемый тип файла"""
 
@@ -36,3 +35,20 @@ class TextExtractionError(FileError):
         if reason:
             message += f". Причина: {reason}"
         super().__init__(message)
+
+
+class FileSaveError(FileError):
+    """Ошибка при сохранении файла на диск"""
+    
+    def __init__(self, filename: str, reason: str):
+        self.filename = filename
+        self.reason = reason
+        super().__init__(f"Не удалось сохранить файл {filename}: {reason}")
+
+class FileDeleteError(FileError):
+    """Ошибка при удалении файла с диска"""
+    
+    def __init__(self, file_path: str, reason: str):
+        self.file_path = file_path
+        self.reason = reason
+        super().__init__(f"Не удалось удалить файл {file_path}: {reason}")

@@ -5,15 +5,15 @@ from typing import List, Optional
 from app.core.exceptions.document import (
     DocumentAlreadyExistsError,
     DocumentDatabaseError,
-    DocumentError,
     DocumentNotFoundError,
+    DocumentValidationError,
 )
-from app.core.exceptions.file import FileError, TextExtractionError
+from app.core.exceptions.file import FileDeleteError, FileValidationError
 from app.core.exceptions.repository import RepositoryError
 from app.core.interfaces.document_repository import IDocumentRepository
 from app.core.interfaces.file_service import IFileService
 from app.core.logger import logger
-from app.core.models.document import Document
+from app.core.models.document import DocumentBase, Document
 from app.core.models.file import FileContent
 from app.core.models.search import SearchResult
 
@@ -25,7 +25,7 @@ class DocumentService:
         self.repository = repository
         self.file_service = file_service
 
-    async def upload_document(self, file: FileContent, user_id: uuid.UUID) -> Document:
+    async def upload_document(self, file: FileContent, user_id: uuid.UUID) -> DocumentBase:
         """
         Загрузка и обработка документа
 
@@ -34,11 +34,12 @@ class DocumentService:
             user_id: uuid.UUID - ID пользователя
 
         Returns:
-            Document: Документ
+            DocumentBase: Документ
 
         Raises:
+            DocumentValidationError: Если не удалось валидировать документ
             DocumentAlreadyExistsError: Если документ с таким содержимым уже существует
-            DocumentError: Если не удалось обработать документ
+            DocumentDatabaseError: Если не удалось сохранить документ в базу данных
         """
         file_path = None
         try:
@@ -59,10 +60,9 @@ class DocumentService:
             )
             file_size = len(content_bytes)
             content = await self.file_service.extract_text(file_path, file_type)
-            logger.debug(f"Извлечен текст из файла: {file.content}")
 
             if not content.strip():
-                raise TextExtractionError(
+                raise DocumentValidationError(
                     "Не удалось извлечь текст из файла или файл пуст"
                 )
 
@@ -78,7 +78,7 @@ class DocumentService:
             document = await self.repository.create(document_data)
 
             logger.info(f"Документ успешно загружен: {document.id}")
-            return document
+            return DocumentBase.model_validate(document.model_dump(exclude={'content'}))
 
         except DocumentAlreadyExistsError as e:
             logger.info(
@@ -86,15 +86,16 @@ class DocumentService:
             )
             raise
 
-        except FileError as e:
+        except FileValidationError as e:
             if file_path and os.path.exists(file_path):
                 await self.file_service.delete_file(file_path)
-            raise DocumentError(f"Не удалось обработать файл: {str(e)}")
+            logger.info(f"Ошибка валидации файла {file.filename} от пользователя {user_id}: {str(e)}")
+            raise DocumentValidationError(str(e))
 
         except RepositoryError as e:
             if file_path and os.path.exists(file_path):
                 await self.file_service.delete_file(file_path)
-            logger.error(f"Критическая ошибка БД при сохранении документа: {e}")
+            logger.error(f"Ошибка базы данных при сохранении документа {file.filename} от пользователя {user_id}: {e}")
             raise DocumentDatabaseError(f"Не удалось сохранить документ: {str(e)}")
 
         except Exception as e:
@@ -103,7 +104,7 @@ class DocumentService:
             logger.error(
                 f"Неожиданная ошибка при загрузке документа {file.filename}: {e}"
             )
-            raise DocumentError(f"Не удалось загрузить документ: {str(e)}")
+            raise e
 
     async def delete_document(self, document_id: uuid.UUID) -> None:
         """
@@ -114,7 +115,7 @@ class DocumentService:
 
         Raises:
             DocumentNotFoundError: Если документ не найден
-            DocumentError: При ошибке удаления
+            DocumentDatabaseError: Если не удалось удалить документ из базы данных
         """
         logger.info(f"Удаление документа: {document_id}")
         try:
@@ -124,22 +125,20 @@ class DocumentService:
 
             await self.repository.delete(document_id)
             logger.info(f"Документ {document_id} успешно удален")
-        except RepositoryError as e:
-            logger.error(
-                f"Критическая ошибка БД при удалении документа {document_id}: {e}"
-            )
-            raise DocumentError(f"Не удалось удалить документ: {str(document_id)}")
 
-        if document.file_path:
-            try:
+            if document.file_path:
                 await self.file_service.delete_file(document.file_path)
                 logger.info(f"Файл {document.file_path} успешно удален")
-            except FileError as e:
-                logger.error(
-                    f"Не удалось удалить файл {document.file_path} из файловой системы: {e}"
-                )
 
-        logger.info(f"Документ {document_id} успешно удален")
+            logger.info(f"Документ {document_id} успешно удален")
+        except RepositoryError as e:
+            logger.error(f"Критическая ошибка БД при удалении документа {document_id}: {e}")
+            raise DocumentDatabaseError(str(e))
+        except FileDeleteError as e:
+            logger.warning(f"Документ {document_id} удален, но не удалось очистить файл: {e}")
+        except Exception as e:
+            logger.error(f"Неожиданная ошибка при удалении документа {document_id}: {e}")
+            raise e
 
     async def search(
         self,
@@ -165,7 +164,7 @@ class DocumentService:
             List[SearchResult]: Список результатов поиска с документами и фрагментами
 
         Raises:
-            DocumentError: При ошибке поиска
+            DocumentDatabaseError: При ошибке поиска
         """
         logger.info(f"Поиск документов по запросу: '{query}', user_id: {user_id}")
         try:
@@ -175,28 +174,29 @@ class DocumentService:
             return results
         except RepositoryError as e:
             logger.error(f"Критическая ошибка БД при поиске документов: {e}")
-            raise DocumentError(f"Ошибка поиска: {str(e)}")
+            raise DocumentDatabaseError(str(e))
 
-    async def get_document(self, document_id: uuid.UUID) -> Document:
+    async def get_document(self, document_id: uuid.UUID) -> DocumentBase:
         """
-        Получение документа по ID
+        Получение метаданных документа по ID
 
         Args:
             document_id: uuid.UUID - ID документа
 
         Returns:
-            Document: Доменная модель документа
+            DocumentBase: Доменная модель метаданных документа
 
         Raises:
             DocumentNotFoundError: Если документ не найден
+            DocumentDatabaseError: Если не удалось получить документ из базы данных
         """
         try:
+            logger.info(f"Получение метаданных документа: {document_id}")
             document = await self.repository.get_by_id(document_id)
             if not document:
                 raise DocumentNotFoundError(str(document_id))
-            return document
+            logger.info(f"Метаданные документа {document_id} успешно получены")
+            return DocumentBase.model_validate(document.model_dump(exclude={'content'}))
         except RepositoryError as e:
-            logger.error(
-                f"Критическая ошибка БД при получении документа {document_id}: {e}"
-            )
-            raise DocumentNotFoundError(str(document_id))
+            logger.error(f"Критическая ошибка БД при получении метаданных документа {document_id}: {e}")
+            raise DocumentDatabaseError(str(e))

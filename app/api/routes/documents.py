@@ -7,8 +7,8 @@ from app.api.dependencies import get_document_service
 from app.core.exceptions.document import (
     DocumentAlreadyExistsError,
     DocumentDatabaseError,
-    DocumentError,
     DocumentNotFoundError,
+    DocumentValidationError,
 )
 from app.core.logger import logger
 from app.core.models.file import FileContent
@@ -17,8 +17,7 @@ from app.schemas.document import (
     DocumentGetResponse,
     DocumentSearchResponse,
     DocumentUploadResponse,
-    ProcessingStatus,
-    SearchMeta,
+    SearchMeta
 )
 from app.services.document_service import DocumentService
 
@@ -42,11 +41,10 @@ async def upload_document(
     - DocumentUploadResponse: Ответ на запрос
 
     Raises:
-    - HTTPException: 400 - Ошибка при загрузке документа
+    - HTTPException: 400 - Ошибка клиентской части
     - HTTPException: 500 - Внутренняя ошибка сервера
     """
     try:
-        # Проверяем, что файл имеет имя
         if not file.filename:
             raise HTTPException(
                 status_code=400, detail="Имя файла не может быть пустым"
@@ -66,17 +64,14 @@ async def upload_document(
 
         return DocumentUploadResponse(
             document=document,
-            status=ProcessingStatus.SUCCESS,
             message="Документ успешно загружен",
         )
     except DocumentAlreadyExistsError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except DocumentValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except DocumentDatabaseError as e:
-        logger.error(f"Ошибка БД при загрузке документа: {e}")
-        raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера")
-    except DocumentError as e:
-        logger.error(f"Ошибка при загрузке документа: {e}")
-        raise HTTPException(status_code=500, detail="Внутренняя ошибка сервера")
+        raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
         logger.error(f"Неожиданная ошибка при загрузке документа: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -84,7 +79,7 @@ async def upload_document(
 
 @router.get("/search", response_model=DocumentSearchResponse)
 async def search_fragments(
-    query: str = Query(..., description="Строка поиска", min_length=1),
+    query: str = Query(..., description="Строка поиска", min_length=3),
     search_exact: bool = Query(False, description="Поиск точного совпадения"),
     user_id: Optional[uuid.UUID] = Query(
         None, description="ID пользователя (опционально)"
@@ -115,7 +110,6 @@ async def search_fragments(
     - DocumentSearchResponse: Ответ на запрос с фрагментами
 
     Raises:
-    - HTTPException: 400 - Ошибка при поиске документов
     - HTTPException: 500 - Внутренняя ошибка сервера
 
     Возвращает список документов и их фрагментов, где найдено совпадение с запросом
@@ -133,7 +127,6 @@ async def search_fragments(
             total_fragments += len(document.fragments)
 
         return DocumentSearchResponse(
-            status=ProcessingStatus.SUCCESS,
             meta=SearchMeta(
                 query=query,
                 context_size_before=context_size_before,
@@ -143,8 +136,8 @@ async def search_fragments(
             ),
             results=results,
         )
-    except DocumentError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    except DocumentDatabaseError as e:
+        raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
         logger.error(f"Неожиданная ошибка при поиске документов: {e}")
         raise HTTPException(
@@ -167,16 +160,15 @@ async def get_document(
 
     Raises:
     - HTTPException: 404 - Документ не найден
-    - HTTPException: 400 - Ошибка при получении документа
     - HTTPException: 500 - Внутренняя ошибка сервера
     """
     try:
         document = await document_service.get_document(document_id)
-        return document
+        return DocumentGetResponse.model_validate(document)
     except DocumentNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
-    except DocumentError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    except DocumentDatabaseError as e:
+        raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Внутренняя ошибка сервера: {str(e)}"
@@ -198,21 +190,19 @@ async def delete_document(
 
     Raises:
     - HTTPException: 404 - Документ не найден
-    - HTTPException: 400 - Ошибка при удалении документа
     - HTTPException: 500 - Внутренняя ошибка сервера
     """
     try:
         await document_service.delete_document(document_id)
         logger.info(f"Документ {document_id} успешно удален")
         return DocumentDeleteResponse(
-            status=ProcessingStatus.SUCCESS,
             message="Документ успешно удален",
             document_id=document_id,
         )
     except DocumentNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
-    except DocumentError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    except DocumentDatabaseError as e:
+        raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
         logger.error(f"Неожиданная ошибка при удалении документа {document_id}: {e}")
         raise HTTPException(status_code=500, detail=f"Неожиданная ошибка: {str(e)}")

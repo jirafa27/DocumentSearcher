@@ -31,8 +31,9 @@ class DocumentDatabaseError(DocumentError):
         super().__init__(f"Ошибка базы данных: {reason}")
 
 
-class TextExtractionError(DocumentError):
-    """Ошибка извлечения текста из документа"""
-
+class DocumentValidationError(DocumentError):
+    """Ошибка валидации документа
+    """
+    
     def __init__(self, reason: str):
-        super().__init__(f"Не удалось извлечь текст: {reason}")
+        super().__init__(f"Ошибка валидации документа: {reason}")

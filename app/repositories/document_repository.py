@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions.repository import RepositoryError
 from app.core.interfaces.document_repository import IDocumentRepository
 from app.core.logger import logger
-from app.core.models.document import Document as DomainDocument
+from app.core.models.document import Document as DomainDocument, DocumentBase as DomainDocumentBase
 from app.core.models.search import (
     ContextInfo,
     SearchDocument,
@@ -49,26 +49,33 @@ class DocumentRepository(IDocumentRepository):
             return ""
 
 
-    async def delete(self, document_id: uuid.UUID):
+    async def delete(self, document_id: uuid.UUID) -> None:
         """
         Удаление документа из базы данных
 
         Args:
             document_id: uuid.UUID - идентификатор документа
+        Raises:
+            RepositoryError: При ошибке удаления из БД
         """
         try:
-            await self.session.execute(delete(SQLDocument).where(SQLDocument.id == document_id))
+            result = await self.session.execute(delete(SQLDocument).where(SQLDocument.id == document_id))
+            
+            if result.rowcount == 0:
+                raise RepositoryError(f"Документ {document_id} не найден для удаления")
+                
             await self.session.execute(delete(SQLDocumentContent).where(SQLDocumentContent.document_id == document_id))
             await self.session.commit()
+            
         except SQLAlchemyError as e:
+            await self.session.rollback()
             raise RepositoryError(f"Ошибка при удалении документа {document_id}: {str(e)}")
 
-
-    async def create(self, domain_document: DomainDocument):
+    async def create(self, document: DomainDocument) -> DomainDocument:
         """
         Создание документа в базе данных
         Args:
-            domain_document: DomainDocument - доменная модель документа
+            document: DomainDocument - доменная модель документа
         Returns:
             DomainDocument: Созданная доменная модель документа
         Raises:
@@ -76,13 +83,13 @@ class DocumentRepository(IDocumentRepository):
         """
         try:
             sql_document = SQLDocument(
-                id=domain_document.id or uuid.uuid4(),
-                user_id=domain_document.user_id,
-                file_path=domain_document.file_path,
-                file_name=domain_document.file_name,
-                file_size=domain_document.file_size,
-                file_type=domain_document.file_type,
-                file_hash=domain_document.file_hash
+                id=document.id or uuid.uuid4(),
+                user_id=document.user_id,
+                file_path=document.file_path,
+                file_name=document.file_name,
+                file_size=document.file_size,
+                file_type=document.file_type,
+                file_hash=document.file_hash
             )
             self.session.add(sql_document)
             await self.session.flush()
@@ -90,25 +97,26 @@ class DocumentRepository(IDocumentRepository):
             sql_document_content = SQLDocumentContent(
                 id=uuid.uuid4(),
                 document_id=sql_document.id,
-                content=domain_document.content,
-                tsvector_col=await self._generate_tsvector(domain_document.content)
+                content=document.content,
+                tsvector_col=await self._generate_tsvector(document.content)
             )
             self.session.add(sql_document_content)
             await self.session.commit()
+
+            return DomainDocument(
+                id=sql_document.id,
+                user_id=sql_document.user_id,
+                file_path=sql_document.file_path,
+                file_name=sql_document.file_name,
+                file_size=sql_document.file_size,
+                file_type=sql_document.file_type,
+                file_hash=sql_document.file_hash,
+                uploaded_at=sql_document.uploaded_at,
+                content=sql_document_content.content,
+            )
         except SQLAlchemyError as e:
             await self.session.rollback()
             raise RepositoryError(f"Ошибка при создании документа {sql_document.id}: {str(e)}")
-        return DomainDocument(
-            id=sql_document.id,
-            user_id=sql_document.user_id,
-            file_path=sql_document.file_path,
-            file_name=sql_document.file_name,
-            file_size=sql_document.file_size,
-            file_type=sql_document.file_type,
-            file_hash=sql_document.file_hash,
-            content=sql_document_content.content,
-            uploaded_at=sql_document.uploaded_at,
-        )
 
 
     async def get_by_hash(self, file_hash: str) -> Optional[DomainDocument]:
@@ -120,6 +128,9 @@ class DocumentRepository(IDocumentRepository):
 
         Returns:
             Optional[DomainDocument]: Доменная модель документа или None если не найден
+
+        Raises:
+            RepositoryError: При ошибке выполнения запроса к БД
         """
         try:
             result = await self.session.execute(
@@ -147,7 +158,7 @@ class DocumentRepository(IDocumentRepository):
                 uploaded_at=document.uploaded_at,
             )
         except SQLAlchemyError as e:
-            raise RepositoryError(f"Ошибка при получении документа {file_hash}: {str(e)}")
+            raise RepositoryError(f"Ошибка при получении документа по хешу {file_hash}: {str(e)}")
 
     async def get_by_id(self, document_id: uuid.UUID) -> Optional[DomainDocument]:
         """
@@ -158,6 +169,9 @@ class DocumentRepository(IDocumentRepository):
 
         Returns:
             Optional[DomainDocument]: Доменная модель документа или None если не найден
+
+        Raises:
+            RepositoryError: При ошибке выполнения запроса к БД
         """
         try:
             query = select(SQLDocument, SQLDocumentContent)\
@@ -366,6 +380,20 @@ class DocumentRepository(IDocumentRepository):
     ) -> List[SearchResult]:
         """
         Поиск документов с фрагментами текста
+
+        Args:
+            query: str - поисковый запрос
+            user_id: Optional[uuid.UUID] - фильтр по пользователю
+            document_id: Optional[uuid.UUID] - фильтр по документу
+            context_size_before: int - размер контекста (слов) до выделения
+            context_size_after: int - размер контекста (слов) после выделения
+            search_exact: bool - флаг точного поиска
+
+        Returns:
+            List[SearchResult]: Список результатов поиска с документами и фрагментами
+
+        Raises:
+            RepositoryError: При ошибке выполнения поиска
         """
         if search_exact:
             return await self._search_exact(query, user_id, document_id, context_size_before, context_size_after)
@@ -413,23 +441,23 @@ class DocumentRepository(IDocumentRepository):
             start, end = match.span()
 
             # Получаем контекст до выделенного текста
-            words_before = highlighted_html[:start].split(' ')
+            words_before = highlighted_html[:start].replace('\n', ' ').split(' ')
             start_index = max(0, len(words_before) - (context_size_before+1))
             context_before = ' '.join(words_before[start_index:])
             
             # Получаем контекст после выделенного текста
-            words_after = highlighted_html[end:].split(' ')
+            words_after = highlighted_html[end:].replace('\n', ' ').split(' ')
             end_index = min(len(words_after), context_size_after+1)
             context_after = ' '.join(words_after[:end_index])
 
             content_before = context_before.replace('<mark>', '').replace('</mark>', '')
             content_after = context_after.replace('<mark>', '').replace('</mark>', '')
-
+            highlighted_text = highlighted_text.replace('\n', ' ')
 
             context_text = f'{content_before}{highlighted_text}{content_after}'
 
-            all_text_without_tags = highlighted_html.replace('<mark>', '').replace('</mark>', '')
-            offset = all_text_without_tags.find(highlighted_text)
+            all_text_without_tags = highlighted_html.replace('<mark>', '').replace('</mark>', '').replace('\n', ' ')
+            offset = all_text_without_tags.find(context_text)
 
             if highlighted_text:
                 fragments.append(SearchFragment(

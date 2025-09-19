@@ -12,3 +12,8 @@ python-docx==1.1.1
 aiofiles==24.1.0
 python-multipart==0.0.20
 pymorphy2==0.9.1
+httpx==0.28.1
+pytest==7.4.4
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+pytest-xdist==3.3.1

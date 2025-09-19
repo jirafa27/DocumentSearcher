@@ -3,24 +3,6 @@ from abc import ABC, abstractmethod
 
 class IFileService(ABC):
     @abstractmethod
-    async def save_file(self, filename: str, content: bytes, file_hash: str) -> str:
-        """
-        Сохранение файла на диск
-
-        Args:
-            filename: str - оригинальное имя файла
-            content: bytes - содержимое файла
-            file_hash: str - SHA-256 хеш файла
-
-        Returns:
-            str: Путь к сохраненному файлу
-
-        Raises:
-            FileError: Если не удалось сохранить файл на диск
-        """
-        raise NotImplementedError
-
-    @abstractmethod
     async def validate_file(self, filename: str, content: bytes) -> None:
         """
         Валидация файла. Проверяется тип файла и размер файла.
@@ -32,6 +14,24 @@ class IFileService(ABC):
         Raises:
             UnsupportedFileTypeError: Если тип файла не поддерживается
             FileTooLargeError: Если файл слишком большой
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    async def save_file(self, filename: str, content: bytes, file_hash: str) -> str:
+        """
+        Сохранение файла в файловую систему
+
+        Args:
+            filename: str - оригинальное имя файла
+            content: bytes - содержимое файла
+            file_hash: str - SHA-256 хеш файла
+
+        Returns:
+            str: Путь к сохраненному файлу
+
+        Raises:
+            FileSaveError: Если не удалось сохранить файл на диск
         """
         raise NotImplementedError
 
@@ -51,18 +51,18 @@ class IFileService(ABC):
     @abstractmethod
     async def extract_text(self, file_path: str, file_type: str) -> str:
         """
-        Извлечение текста из файла
+        Извлечение текста в зависимости от типа файла
 
         Args:
             file_path: str - путь к файлу
-            file_type: str - тип файла (pdf, docx)
+            file_type: str - тип файла
 
         Returns:
-            str: Извлеченный текст
+            str: Текст из файла
 
         Raises:
+            UnsupportedFileTypeError: Если тип файла не поддерживается
             TextExtractionError: Если не удалось извлечь текст из файла
-            FileNotFoundError: Если файл не найден
         """
         raise NotImplementedError
 
@@ -74,8 +74,10 @@ class IFileService(ABC):
         Args:
             file_path: str - путь к файлу
 
+        Returns:
+            None
+
         Raises:
-            FileNotFoundError: Если файл не найден
-            PermissionError: Если нет прав на удаление файла
+            FileDeleteError: Если не удалось удалить файл
         """
         raise NotImplementedError

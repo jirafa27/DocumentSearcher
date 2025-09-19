@@ -154,6 +154,21 @@ class TestParseHeadlineFragments:
         assert fragments[0].context.highlight_length == len_of_highlight
 
 
+    def test_new_line_in_context(self, repository):
+        """
+            Тест новой строки в контексте и в выделении
+            Новая строка должна быть заменена на пробел
+        """
+        html = "контекст\nс новой строкой d      <mark>выделение\nс новой строкой</mark> e"
+        fragments = repository._parse_ts_headline_fragments(html, 100, 100)
+        assert fragments[0].context.text == "контекст с новой строкой d      выделение с новой строкой e"
+
+    def test_offset_in_context(self, repository):
+        """Тест смещения контекста в документе"""
+        html = "Один два <mark>выделение</mark> три четыре пять шесть семь восемь девять десять"
+        fragments = repository._parse_ts_headline_fragments(html, 1, 1)
+        assert fragments[0].context.offset == len("Один ")
+
 
 
 

@@ -9,7 +9,8 @@ from docx import Document as DocxDocument
 
 from app.core.config import settings
 from app.core.exceptions.file import (
-    FileError,
+    FileDeleteError,
+    FileSaveError,
     FileTooLargeError,
     TextExtractionError,
     UnsupportedFileTypeError,
@@ -66,18 +67,17 @@ class FileService(IFileService):
             str: Путь к сохраненному файлу
 
         Raises:
-            FileError: Если не удалось сохранить файл на диск
+            FileSaveError: Если не удалось сохранить файл на диск
         """
-        file_path = f"{self.upload_dir}/{file_hash}_{filename}"
-
         try:
+            file_path = f"{self.upload_dir}/{file_hash}_{filename}"
             async with aiofiles.open(file_path, "wb") as f:
                 await f.write(content)
 
             return file_path
         except Exception as e:
             logger.error(f"Ошибка при сохранении файла {filename}: {e}")
-            raise FileError(f"Не удалось сохранить файл: {str(e)}")
+            raise FileSaveError(filename, str(e))
 
     def _extract_text_from_pdf(self, file_path: str) -> str:
         """
@@ -131,7 +131,6 @@ class FileService(IFileService):
                     for cell in row.cells:
                         text += cell.text + " "
                     text += "\n"
-
             return text.strip()
 
         except Exception as e:
@@ -153,19 +152,16 @@ class FileService(IFileService):
             UnsupportedFileTypeError: Если тип файла не поддерживается
             TextExtractionError: Если не удалось извлечь текст из файла
         """
-
-        await self.validate_file(file_path, file_type)
-
         if file_type == "pdf":
-            # Выполняем в отдельном потоке чтобы не блокировать event loop
             return await asyncio.get_event_loop().run_in_executor(
                 None, self._extract_text_from_pdf, file_path
             )
         elif file_type == "docx":
-            # Выполняем в отдельном потоке чтобы не блокировать event loop
             return await asyncio.get_event_loop().run_in_executor(
-                None, self._extract_text_from_docx, file_path
-            )
+                    None, self._extract_text_from_docx, file_path
+                )
+        else:
+            raise UnsupportedFileTypeError(self.allowed_types)
 
 
     async def delete_file(self, file_path: str) -> None:
@@ -179,17 +175,19 @@ class FileService(IFileService):
             None
 
         Raises:
-            FileError: Если не удалось удалить файл
+            FileDeleteError: Если не удалось удалить файл
         """
         try:
             if os.path.exists(file_path):
                 os.remove(file_path)
             else:
                 logger.error(f"Файл не найден: {file_path}")
-                raise FileNotFoundError(file_path)
+                raise FileDeleteError(file_path, "Файл не найден")
+        except FileDeleteError:
+            raise
         except Exception as e:
             logger.error(f"Не удалось удалить файл: {file_path}")
-            raise FileError(f"Не удалось удалить файл: {str(e)}")
+            raise FileDeleteError(file_path, str(e))
 
     async def calculate_hash(self, content: bytes) -> str:
         """
