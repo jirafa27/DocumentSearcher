@@ -17,7 +17,7 @@ class IDocumentRepository(ABC):
 
         Returns:
             Optional[DocumentBase]: Доменная модель документа или None если не найден
-        
+
         Raises:
             RepositoryError: При ошибке выполнения запроса к БД
         """

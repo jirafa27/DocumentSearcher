@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  test-db:
+    image: postgres:15
+    container_name: documentsearcher_test_db
+    environment:
+      POSTGRES_DB: test_documentsearcher
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5433:5432"  # Другой порт, чтобы не конфликтовать с основной БД
+    volumes:
+      - test_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d test_documentsearcher"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  test_db_data:

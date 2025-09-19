@@ -36,12 +36,15 @@ venv/
 # Uploads
 uploads/
 !uploads/.gitkeep
+test_uploads/
 
 
 # Tests
 .pytest_cache/
 .coverage
 htmlcov/
+coverage.xml
+*.coverage
 
 # Logs
 *.log

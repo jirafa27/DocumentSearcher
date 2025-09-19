@@ -17,7 +17,7 @@ from app.schemas.document import (
     DocumentGetResponse,
     DocumentSearchResponse,
     DocumentUploadResponse,
-    SearchMeta
+    SearchMeta,
 )
 from app.services.document_service import DocumentService
 
@@ -117,7 +117,12 @@ async def search_fragments(
 
     try:
         results = await document_service.search(
-            query, user_id, document_id, context_size_before, context_size_after, search_exact
+            query,
+            user_id,
+            document_id,
+            context_size_before,
+            context_size_after,
+            search_exact,
         )
         logger.info(f"Найдено {len(results)} документов")
 

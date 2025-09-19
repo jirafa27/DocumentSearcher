@@ -13,7 +13,7 @@ from app.core.exceptions.repository import RepositoryError
 from app.core.interfaces.document_repository import IDocumentRepository
 from app.core.interfaces.file_service import IFileService
 from app.core.logger import logger
-from app.core.models.document import DocumentBase, Document
+from app.core.models.document import Document, DocumentBase
 from app.core.models.file import FileContent
 from app.core.models.search import SearchResult
 
@@ -25,7 +25,9 @@ class DocumentService:
         self.repository = repository
         self.file_service = file_service
 
-    async def upload_document(self, file: FileContent, user_id: uuid.UUID) -> DocumentBase:
+    async def upload_document(
+        self, file: FileContent, user_id: uuid.UUID
+    ) -> DocumentBase:
         """
         Загрузка и обработка документа
 
@@ -78,7 +80,7 @@ class DocumentService:
             document = await self.repository.create(document_data)
 
             logger.info(f"Документ успешно загружен: {document.id}")
-            return DocumentBase.model_validate(document.model_dump(exclude={'content'}))
+            return DocumentBase.model_validate(document.model_dump(exclude={"content"}))
 
         except DocumentAlreadyExistsError as e:
             logger.info(
@@ -89,13 +91,17 @@ class DocumentService:
         except FileValidationError as e:
             if file_path and os.path.exists(file_path):
                 await self.file_service.delete_file(file_path)
-            logger.info(f"Ошибка валидации файла {file.filename} от пользователя {user_id}: {str(e)}")
+            logger.info(
+                f"Ошибка валидации файла {file.filename} от пользователя {user_id}: {str(e)}"
+            )
             raise DocumentValidationError(str(e))
 
         except RepositoryError as e:
             if file_path and os.path.exists(file_path):
                 await self.file_service.delete_file(file_path)
-            logger.error(f"Ошибка базы данных при сохранении документа {file.filename} от пользователя {user_id}: {e}")
+            logger.error(
+                f"Ошибка базы данных при сохранении документа {file.filename} от пользователя {user_id}: {e}"
+            )
             raise DocumentDatabaseError(f"Не удалось сохранить документ: {str(e)}")
 
         except Exception as e:
@@ -132,12 +138,18 @@ class DocumentService:
 
             logger.info(f"Документ {document_id} успешно удален")
         except RepositoryError as e:
-            logger.error(f"Критическая ошибка БД при удалении документа {document_id}: {e}")
+            logger.error(
+                f"Критическая ошибка БД при удалении документа {document_id}: {e}"
+            )
             raise DocumentDatabaseError(str(e))
         except FileDeleteError as e:
-            logger.warning(f"Документ {document_id} удален, но не удалось очистить файл: {e}")
+            logger.warning(
+                f"Документ {document_id} удален, но не удалось очистить файл: {e}"
+            )
         except Exception as e:
-            logger.error(f"Неожиданная ошибка при удалении документа {document_id}: {e}")
+            logger.error(
+                f"Неожиданная ошибка при удалении документа {document_id}: {e}"
+            )
             raise e
 
     async def search(
@@ -169,7 +181,12 @@ class DocumentService:
         logger.info(f"Поиск документов по запросу: '{query}', user_id: {user_id}")
         try:
             results = await self.repository.search(
-                query, user_id, document_id, context_size_before, context_size_after, search_exact
+                query,
+                user_id,
+                document_id,
+                context_size_before,
+                context_size_after,
+                search_exact,
             )
             return results
         except RepositoryError as e:
@@ -196,7 +213,9 @@ class DocumentService:
             if not document:
                 raise DocumentNotFoundError(str(document_id))
             logger.info(f"Метаданные документа {document_id} успешно получены")
-            return DocumentBase.model_validate(document.model_dump(exclude={'content'}))
+            return DocumentBase.model_validate(document.model_dump(exclude={"content"}))
         except RepositoryError as e:
-            logger.error(f"Критическая ошибка БД при получении метаданных документа {document_id}: {e}")
+            logger.error(
+                f"Критическая ошибка БД при получении метаданных документа {document_id}: {e}"
+            )
             raise DocumentDatabaseError(str(e))

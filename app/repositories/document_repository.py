@@ -1,25 +1,25 @@
 import re
+import string
 import uuid
 from typing import List, Optional
-import string
 
-from sqlalchemy import delete, func, select, text, desc
+from sqlalchemy import delete, desc, func, select, text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions.repository import RepositoryError
 from app.core.interfaces.document_repository import IDocumentRepository
 from app.core.logger import logger
-from app.core.models.document import Document as DomainDocument, DocumentBase as DomainDocumentBase
+from app.core.models.document import Document as DomainDocument
 from app.core.models.search import (
     ContextInfo,
     SearchDocument,
     SearchFragment,
     SearchResult,
 )
+from app.core.utils.text_analyzer import text_analyzer
 from app.models.document import Document as SQLDocument
 from app.models.document import DocumentContent as SQLDocumentContent
-from app.core.utils.text_analyzer import text_analyzer
 
 
 class DocumentRepository(IDocumentRepository):
@@ -48,7 +48,6 @@ class DocumentRepository(IDocumentRepository):
             logger.error(f"Ошибка при генерации tsvector: {e}")
             return ""
 
-
     async def delete(self, document_id: uuid.UUID) -> None:
         """
         Удаление документа из базы данных
@@ -59,17 +58,25 @@ class DocumentRepository(IDocumentRepository):
             RepositoryError: При ошибке удаления из БД
         """
         try:
-            result = await self.session.execute(delete(SQLDocument).where(SQLDocument.id == document_id))
-            
+            result = await self.session.execute(
+                delete(SQLDocument).where(SQLDocument.id == document_id)
+            )
+
             if result.rowcount == 0:
                 raise RepositoryError(f"Документ {document_id} не найден для удаления")
-                
-            await self.session.execute(delete(SQLDocumentContent).where(SQLDocumentContent.document_id == document_id))
+
+            await self.session.execute(
+                delete(SQLDocumentContent).where(
+                    SQLDocumentContent.document_id == document_id
+                )
+            )
             await self.session.commit()
-            
+
         except SQLAlchemyError as e:
             await self.session.rollback()
-            raise RepositoryError(f"Ошибка при удалении документа {document_id}: {str(e)}")
+            raise RepositoryError(
+                f"Ошибка при удалении документа {document_id}: {str(e)}"
+            )
 
     async def create(self, document: DomainDocument) -> DomainDocument:
         """
@@ -89,7 +96,7 @@ class DocumentRepository(IDocumentRepository):
                 file_name=document.file_name,
                 file_size=document.file_size,
                 file_type=document.file_type,
-                file_hash=document.file_hash
+                file_hash=document.file_hash,
             )
             self.session.add(sql_document)
             await self.session.flush()
@@ -98,7 +105,7 @@ class DocumentRepository(IDocumentRepository):
                 id=uuid.uuid4(),
                 document_id=sql_document.id,
                 content=document.content,
-                tsvector_col=await self._generate_tsvector(document.content)
+                tsvector_col=await self._generate_tsvector(document.content),
             )
             self.session.add(sql_document_content)
             await self.session.commit()
@@ -116,8 +123,9 @@ class DocumentRepository(IDocumentRepository):
             )
         except SQLAlchemyError as e:
             await self.session.rollback()
-            raise RepositoryError(f"Ошибка при создании документа {sql_document.id}: {str(e)}")
-
+            raise RepositoryError(
+                f"Ошибка при создании документа {sql_document.id}: {str(e)}"
+            )
 
     async def get_by_hash(self, file_hash: str) -> Optional[DomainDocument]:
         """
@@ -135,8 +143,9 @@ class DocumentRepository(IDocumentRepository):
         try:
             result = await self.session.execute(
                 select(SQLDocument, SQLDocumentContent)
-                .join(SQLDocumentContent, 
-                SQLDocumentContent.document_id == SQLDocument.id)
+                .join(
+                    SQLDocumentContent, SQLDocumentContent.document_id == SQLDocument.id
+                )
                 .where(SQLDocument.file_hash == file_hash)
             )
             row = result.fetchone()
@@ -158,7 +167,9 @@ class DocumentRepository(IDocumentRepository):
                 uploaded_at=document.uploaded_at,
             )
         except SQLAlchemyError as e:
-            raise RepositoryError(f"Ошибка при получении документа по хешу {file_hash}: {str(e)}")
+            raise RepositoryError(
+                f"Ошибка при получении документа по хешу {file_hash}: {str(e)}"
+            )
 
     async def get_by_id(self, document_id: uuid.UUID) -> Optional[DomainDocument]:
         """
@@ -174,9 +185,13 @@ class DocumentRepository(IDocumentRepository):
             RepositoryError: При ошибке выполнения запроса к БД
         """
         try:
-            query = select(SQLDocument, SQLDocumentContent)\
-                .join(SQLDocumentContent, SQLDocumentContent.document_id == SQLDocument.id)\
+            query = (
+                select(SQLDocument, SQLDocumentContent)
+                .join(
+                    SQLDocumentContent, SQLDocumentContent.document_id == SQLDocument.id
+                )
                 .where(SQLDocument.id == document_id)
+            )
             result = await self.session.execute(query)
             row = result.fetchone()
 
@@ -201,8 +216,9 @@ class DocumentRepository(IDocumentRepository):
                 f"Ошибка при получении документа {document_id}: {str(e)}"
             )
 
-
-    def _filter_fragments_by_relevance(self, fragments: List[SearchFragment], query: str) -> List[SearchFragment]:
+    def _filter_fragments_by_relevance(
+        self, fragments: List[SearchFragment], query: str
+    ) -> List[SearchFragment]:
         """
         Фильтрует фрагменты по наличию всех значимых слов из запроса
         Использует морфологический анализ для более точного поиска
@@ -213,7 +229,8 @@ class DocumentRepository(IDocumentRepository):
             List[SearchFragment]: Фрагменты, содержащие все значимые слова запроса
         """
         return [
-            fragment for fragment in fragments 
+            fragment
+            for fragment in fragments
             if text_analyzer.all_query_words_present(fragment.text, query)
         ]
 
@@ -239,10 +256,12 @@ class DocumentRepository(IDocumentRepository):
             List[SearchResult]: Список результатов поиска с документами и фрагментами
         """
         try:
-            query_words_count = len(query.split(' '))
-            min_words_limit = max(context_size_before+query_words_count+context_size_after, 10)
+            query_words_count = len(query.split(" "))
+            min_words_limit = max(
+                context_size_before + query_words_count + context_size_after, 10
+            )
             min_words = min(min_words_limit, 100)
-            max_words_limit = min_words*2
+            max_words_limit = min_words * 2
             # Создаем поисковый запрос с морфологией
             search_query = (
                 select(
@@ -256,16 +275,16 @@ class DocumentRepository(IDocumentRepository):
                     SQLDocument.uploaded_at,
                     # Выделение найденных фрагментов с подсветкой
                     func.ts_headline(
-                        'russian',
+                        "russian",
                         SQLDocumentContent.content,
-                        func.phraseto_tsquery('russian', query),
+                        func.phraseto_tsquery("russian", query),
                         f"MaxFragments=100, MaxWords={max_words_limit}, MinWords={min_words}, "
-                        f"StartSel=<mark>, StopSel=</mark>, ShortWord=0, HighlightAll=false"
-                    ).label('highlighted_content'),
+                        f"StartSel=<mark>, StopSel=</mark>, ShortWord=0, HighlightAll=false",
+                    ).label("highlighted_content"),
                     func.ts_rank(
                         SQLDocumentContent.tsvector_col,
-                        func.phraseto_tsquery('russian', query)
-                    ).label('rank'),
+                        func.phraseto_tsquery("russian", query),
+                    ).label("rank"),
                 )
                 .select_from(
                     SQLDocument.__table__.join(
@@ -274,11 +293,11 @@ class DocumentRepository(IDocumentRepository):
                     )
                 )
                 .where(
-                    SQLDocumentContent.tsvector_col.op('@@')(
-                        func.phraseto_tsquery('russian', query)
+                    SQLDocumentContent.tsvector_col.op("@@")(
+                        func.phraseto_tsquery("russian", query)
                     )
                 )
-            ).order_by(desc('rank'))
+            ).order_by(desc("rank"))
 
             # Добавляем фильтры
             if user_id is not None:
@@ -286,33 +305,44 @@ class DocumentRepository(IDocumentRepository):
             if document_id is not None:
                 search_query = search_query.where(SQLDocument.id == document_id)
 
-
             result = await self.session.execute(search_query)
             rows = result.fetchall()
             search_results = []
-    
+
             for row in rows:
-                highlighted_content = self._merge_phrase_highlights(row.highlighted_content)
-                fragments = self._parse_ts_headline_fragments(highlighted_content, context_size_before, context_size_after)
-                filtered_fragments = self._filter_fragments_by_relevance(fragments, query)
+                highlighted_content = self._merge_phrase_highlights(
+                    row.highlighted_content
+                )
+                fragments = self._parse_ts_headline_fragments(
+                    highlighted_content, context_size_before, context_size_after
+                )
+                filtered_fragments = self._filter_fragments_by_relevance(
+                    fragments, query
+                )
                 if filtered_fragments:
-                    search_document = SearchDocument(id=row.id,
-                                                    user_id=row.user_id,
-                                                    file_name=row.file_name,
-                                                    file_type=row.file_type,
-                                                    file_size=row.file_size,
-                                                    file_path=row.file_path,
-                                                    uploaded_at=row.uploaded_at,)  
-                    search_results.append(SearchResult(document=search_document,
-                                                        fragments=filtered_fragments))
+                    search_document = SearchDocument(
+                        id=row.id,
+                        user_id=row.user_id,
+                        file_name=row.file_name,
+                        file_type=row.file_type,
+                        file_size=row.file_size,
+                        file_path=row.file_path,
+                        uploaded_at=row.uploaded_at,
+                    )
+                    search_results.append(
+                        SearchResult(
+                            document=search_document, fragments=filtered_fragments
+                        )
+                    )
 
             return search_results if search_results else []
-
 
         except SQLAlchemyError as e:
             raise RepositoryError(f"Ошибка при полнотекстовом поиске: {str(e)}")
 
-    def _filter_results_for_exact_match(self, results: List[SearchResult], query: str) -> List[SearchResult]:
+    def _filter_results_for_exact_match(
+        self, results: List[SearchResult], query: str
+    ) -> List[SearchResult]:
         """
         Фильтрует результаты поиска по точным совпадениям
         Args:
@@ -322,21 +352,22 @@ class DocumentRepository(IDocumentRepository):
             List[SearchResult]: Список результатов поиска с точными совпадениями
         """
         filtered_results = []
-        
+
         for result in results:
             exact_fragments = []
             for fragment in result.fragments:
-                if text_analyzer.normalize_text(fragment.text).strip() == text_analyzer.normalize_text(query).strip():
+                if (
+                    text_analyzer.normalize_text(fragment.text).strip()
+                    == text_analyzer.normalize_text(query).strip()
+                ):
                     exact_fragments.append(fragment)
-            
-            if exact_fragments:
-                filtered_results.append(SearchResult(
-                    document=result.document,
-                    fragments=exact_fragments
-                ))
-        
-        return filtered_results
 
+            if exact_fragments:
+                filtered_results.append(
+                    SearchResult(document=result.document, fragments=exact_fragments)
+                )
+
+        return filtered_results
 
     async def _search_exact(
         self,
@@ -360,15 +391,17 @@ class DocumentRepository(IDocumentRepository):
             List[SearchResult]: Список результатов поиска с документами и фрагментами
         """
         try:
-            full_text_result = await self._search_fulltext(query, user_id, document_id, context_size_before, context_size_after)
-            filtered_results = self._filter_results_for_exact_match(full_text_result, query)
+            full_text_result = await self._search_fulltext(
+                query, user_id, document_id, context_size_before, context_size_after
+            )
+            filtered_results = self._filter_results_for_exact_match(
+                full_text_result, query
+            )
             return filtered_results
-    
+
         except SQLAlchemyError as e:
             raise RepositoryError(f"Ошибка при точном поиске: {str(e)}")
-                        
 
-            
     async def search(
         self,
         query: str,
@@ -396,30 +429,41 @@ class DocumentRepository(IDocumentRepository):
             RepositoryError: При ошибке выполнения поиска
         """
         if search_exact:
-            return await self._search_exact(query, user_id, document_id, context_size_before, context_size_after)
+            return await self._search_exact(
+                query, user_id, document_id, context_size_before, context_size_after
+            )
         else:
-            return await self._search_fulltext(query, user_id, document_id, context_size_before, context_size_after)
+            return await self._search_fulltext(
+                query, user_id, document_id, context_size_before, context_size_after
+            )
 
     def _merge_phrase_highlights(self, highlighted_html: str) -> str:
         """
         Объединяет выделения, разделенные служебными словами и пунктуацией
         """
-        
+
         def should_merge(between_text: str) -> bool:
             # Только пробелы или пунктуация
-            clean_text = between_text.translate(str.maketrans('', '', string.punctuation)).strip()
+            clean_text = between_text.translate(
+                str.maketrans("", "", string.punctuation)
+            ).strip()
             if not clean_text:
                 return True
-            
+
             # Проверяем значимость слов
             meaningful_words = text_analyzer.extract_meaningful_words(between_text)
             return len(meaningful_words) == 0  # Нет значимых слов = объединяем
-        
-        pattern = r'</mark>(.*?)<mark>'
-        return re.sub(pattern, lambda m: m.group(1) if should_merge(m.group(1)) else m.group(0), highlighted_html)
 
+        pattern = r"</mark>(.*?)<mark>"
+        return re.sub(
+            pattern,
+            lambda m: m.group(1) if should_merge(m.group(1)) else m.group(0),
+            highlighted_html,
+        )
 
-    def _parse_ts_headline_fragments(self, highlighted_html: str, context_size_before: int, context_size_after: int) -> List[SearchFragment]:
+    def _parse_ts_headline_fragments(
+        self, highlighted_html: str, context_size_before: int, context_size_after: int
+    ) -> List[SearchFragment]:
         """
         Парсит фрагменты из ts_headline с подсветкой.
         Args:
@@ -433,42 +477,48 @@ class DocumentRepository(IDocumentRepository):
         if not highlighted_html:
             return fragments
 
-        pattern = r'<mark>(.*?)</mark>'
+        pattern = r"<mark>(.*?)</mark>"
         matches = re.finditer(pattern, highlighted_html, re.DOTALL | re.IGNORECASE)
-        
+
         for match in matches:
             highlighted_text = match.group(1)
             start, end = match.span()
 
             # Получаем контекст до выделенного текста
-            words_before = highlighted_html[:start].replace('\n', ' ').split(' ')
-            start_index = max(0, len(words_before) - (context_size_before+1))
-            context_before = ' '.join(words_before[start_index:])
-            
+            words_before = highlighted_html[:start].replace("\n", " ").split(" ")
+            start_index = max(0, len(words_before) - (context_size_before + 1))
+            context_before = " ".join(words_before[start_index:])
+
             # Получаем контекст после выделенного текста
-            words_after = highlighted_html[end:].replace('\n', ' ').split(' ')
-            end_index = min(len(words_after), context_size_after+1)
-            context_after = ' '.join(words_after[:end_index])
+            words_after = highlighted_html[end:].replace("\n", " ").split(" ")
+            end_index = min(len(words_after), context_size_after + 1)
+            context_after = " ".join(words_after[:end_index])
 
-            content_before = context_before.replace('<mark>', '').replace('</mark>', '')
-            content_after = context_after.replace('<mark>', '').replace('</mark>', '')
-            highlighted_text = highlighted_text.replace('\n', ' ')
+            content_before = context_before.replace("<mark>", "").replace("</mark>", "")
+            content_after = context_after.replace("<mark>", "").replace("</mark>", "")
+            highlighted_text = highlighted_text.replace("\n", " ")
 
-            context_text = f'{content_before}{highlighted_text}{content_after}'
+            context_text = f"{content_before}{highlighted_text}{content_after}"
 
-            all_text_without_tags = highlighted_html.replace('<mark>', '').replace('</mark>', '').replace('\n', ' ')
+            all_text_without_tags = (
+                highlighted_html.replace("<mark>", "")
+                .replace("</mark>", "")
+                .replace("\n", " ")
+            )
             offset = all_text_without_tags.find(context_text)
 
             if highlighted_text:
-                fragments.append(SearchFragment(
-                    text=highlighted_text,
-                    context=ContextInfo(
-                        text=context_text,
-                        offset=offset,
-                        length=len(context_text),
-                        highlight_start=len(context_before),
-                        highlight_length=len(highlighted_text)
+                fragments.append(
+                    SearchFragment(
+                        text=highlighted_text,
+                        context=ContextInfo(
+                            text=context_text,
+                            offset=offset,
+                            length=len(context_text),
+                            highlight_start=len(context_before),
+                            highlight_length=len(highlighted_text),
+                        ),
                     )
-                ))
-        
+                )
+
         return fragments

@@ -32,8 +32,7 @@ class DocumentDatabaseError(DocumentError):
 
 
 class DocumentValidationError(DocumentError):
-    """Ошибка валидации документа
-    """
-    
+    """Ошибка валидации документа"""
+
     def __init__(self, reason: str):
         super().__init__(f"Ошибка валидации документа: {reason}")

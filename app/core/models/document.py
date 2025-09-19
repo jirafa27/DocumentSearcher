@@ -31,6 +31,3 @@ class Document(DocumentBase):
     class Config:
         from_attributes = True
         exclude_none = True
-
-
-
